@@ -67,3 +67,66 @@ Issue with `foundryup-zksync` is that `libc6` version that is on machine is less
 > This is my understanding and terms in the explanation or the whole explanation might be wrong.
 
 -   [ ] Read about Transaction Types in details - I do understand EIP-1559 but no what are other types.
+
+**Final Code**:
+
+`SimpleStorage.sol`:
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.19;
+
+contract SimpleStorage {
+    uint256 myFavoriteNumber;
+
+    struct Person {
+        uint256 favoriteNumber;
+        string name;
+    }
+
+    Person[] public listOfPeople;
+
+    mapping(string => uint256) public nameToFavoriteNumber;
+
+    function store(uint256 _favoriteNumber) public {
+        myFavoriteNumber = _favoriteNumber;
+    }
+
+    function retrieve() public view returns (uint256) {
+        return myFavoriteNumber;
+    }
+
+    function addPerson(string memory _name, uint256 _favoriteNumber) public {
+        listOfPeople.push(Person(_favoriteNumber, _name));
+        nameToFavoriteNumber[_name] = _favoriteNumber;
+    }
+}
+```
+
+**Script:**
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.19;
+
+import {Script} from "forge-std/Script.sol";
+import {SimpleStorage} from "../src/SimpleStorage.sol";
+
+contract DeploySimpleStorage is Script {
+    function run() external returns (SimpleStorage) {
+        vm.startBroadcast(); // this is something called
+        // cheatcode - read foundry docs to learn about that more.
+        // startBroadcast - tells foundry to send all that comes
+        // after it to RPC url
+
+        SimpleStorage simpleStorage = new SimpleStorage();
+        // create new instance of SimpleStorage
+
+        vm.stopBroadcast();
+        // this stops braodcasting to PRC url
+
+        return simpleStorage;
+    }
+}
+```
+
+## Section 2
+
