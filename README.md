@@ -1,6 +1,6 @@
 # Foundry Fundamentals
 
-This is the third course on cyfrin updraft.
+This is the third course on cyfrin updraft. These are notes about course itself but one of the motivation for going through this is how Cyfrin has structured their courses which will help me write and plan my tutorial series.
 
 ## Section 1: Foundry Simple Storage
 
@@ -68,65 +68,259 @@ Issue with `foundryup-zksync` is that `libc6` version that is on machine is less
 
 -   [ ] Read about Transaction Types in details - I do understand EIP-1559 but no what are other types.
 
-**Final Code**:
+## Section 2 - FundMe
 
-`SimpleStorage.sol`:
-```solidity
-// SPDX-License-Identifier: MIT
-pragma solidity 0.8.19;
+Notes:
 
-contract SimpleStorage {
-    uint256 myFavoriteNumber;
+-   Command to see foundry remappings: `forge remappings`. Read more about remappings [here](https://book.getfoundry.sh/projects/dependencies).
 
-    struct Person {
-        uint256 favoriteNumber;
-        string name;
-    }
+-   Naming Convention for test files is `<FILE_NAME>.t.sol`
 
-    Person[] public listOfPeople;
+Notes on Tests:
 
-    mapping(string => uint256) public nameToFavoriteNumber;
+-   Ownership of deployed contract goes to contract i.e. `TestFundMe.t.sol` and not wallet that is deploying it. This is bit confusing. I don't understand the reasoning behind it.
 
-    function store(uint256 _favoriteNumber) public {
-        myFavoriteNumber = _favoriteNumber;
-    }
+    -   Ex. we write test -> that test deploys contract. This will set owner of contract to test contract and not the wallet that is deploying it. This is kind of like factory pattern without option to change the owner.
 
-    function retrieve() public view returns (uint256) {
-        return myFavoriteNumber;
-    }
+    -   So when testing for owner, we need to compare address of owner to test contract and not the test wallet.
 
-    function addPerson(string memory _name, uint256 _favoriteNumber) public {
-        listOfPeople.push(Person(_favoriteNumber, _name));
-        nameToFavoriteNumber[_name] = _favoriteNumber;
-    }
-}
-```
+-   types of test:
 
-**Script:**
-```solidity
-// SPDX-License-Identifier: MIT
-pragma solidity 0.8.19;
+    -   Unit: Testing a specific part of our code
 
-import {Script} from "forge-std/Script.sol";
-import {SimpleStorage} from "../src/SimpleStorage.sol";
+    -   Integration: Testing how our code works with other parts of our code
 
-contract DeploySimpleStorage is Script {
-    function run() external returns (SimpleStorage) {
-        vm.startBroadcast(); // this is something called
-        // cheatcode - read foundry docs to learn about that more.
-        // startBroadcast - tells foundry to send all that comes
-        // after it to RPC url
+    -   Forked: Testing our code on a simulated real environment
 
-        SimpleStorage simpleStorage = new SimpleStorage();
-        // create new instance of SimpleStorage
+    -   Staged: Testing our code in real environment that is not prod
 
-        vm.stopBroadcast();
-        // this stops braodcasting to PRC url
+-   Fork testing is just fetching state of certain thing from chain and then running test against those things.
 
-        return simpleStorage;
-    }
-}
-```
+    -   For current contract to demonstrate the fork testing, I tested if chainlink pricefeed is returning correct version as I expected which is 4.
 
-## Section 2
+        ```solidity
+        // getVersion Function
+        ```
 
+            function getVersion() public view returns (uint256) {
+                AggregatorV3Interface priceFeed = AggregatorV3Interface(
+                    0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165
+                );
+                return priceFeed.version();
+            }
+
+        ````
+        ```solidity
+        // function from FundMe.t.sol
+        ````
+
+            function testPriceFeedVersion() public view {
+                assertEq(fundMe.getVersion(), 4);
+            }
+
+        ```
+
+        ```
+
+-   Now that this was added command to test this function was as follows:
+
+    ```bash
+    forge test --mt testPriceFeedVersion -vvvv --fork-url $ARB_SEPOLIA_RPC_URL
+    ```
+
+-   `--mt` flag is to filter particular tests from list of test. I wanted to run `testPriceFeedVersion` so I passed that
+
+-   `-vvvv` is to see trace and check where things are failing.
+
+-   `--fork-url` or `--rpc-url` is to pass the RPC url of the network. Also, `$ARB_SEPOLIA_RPC_URL` is added to the terminal so command knows it's value. To add it, I can run `source .env` and all variables from that file will be added to terminal for my use in command.
+
+-   In course, there was a refactor which was to pass address of price feed through construtor and then using script to deploy contract for test.
+
+    -   First one I understood as it was simple.
+
+    -   Second one changed how tests where working. Before this if you deployed contract in `setUp` function of the test it was setting test contract address as the owner of the `fundMe` contract that was being deployed to test. Now when using script contract to deploy contract for the test **that is not the case**.
+
+        ```solidity
+        // modified code in test.
+
+        // SPDX-License-Identifier: MIT
+        pragma solidity 0.8.19;
+
+        import {Test, console} from "forge-std/Test.sol";
+        import {FundMe} from "../src/FundMe.sol";
+        import {DeployFundMe} from "../script/DeployFundMe.s.sol";
+
+        contract FundMeTest is Test {
+            FundMe fundMe; // putting contract in golbal variable
+
+            function setUp() external {
+                // us -> FundMeTest -> FundMe
+                // test contract is deploying the contract that is being tested
+                // so if we are setting owner for the contract, we won't be the owner
+                // instead the test contract will be owner of contract that is being tested.abi
+
+                // probably reason is to understand from each action from the point of deployer
+                // and deployer in this case is this test contract.
+                // NOT VERY INTUITIVE -> maybe this reasoning makes sense to maintainers
+                // I work on this maybe I will understand why they did that this way.
+
+                // old way confusing
+                // fundMe = new FundMe(0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165);
+
+                // deploy contracts with script to use in test
+                DeployFundMe deployFundMe = new DeployFundMe();
+                fundMe = deployFundMe.run();
+                // also changes how owner is set in test where we are testing owner
+                // with script the owner of the deployed contract will be the wallet
+                // that is deploying the contract
+            }
+        }
+        ```
+
+-   This is change makes more sense in context of testing. Also, if there are any deployment changes then all those will remain same in test and prod environment.
+
+-   Command to run all tests on forked network:
+
+    ```bash
+    forge test --fork-url $ARB_SEPOLIA_RPC_URL -vvvvv
+    ```
+
+-   Setting tests with modifier is a great idea, as modifier runs before executing the function it also works as setup for tests.
+
+    ```solidity
+        modifier funded() {
+            // when this modifier is added to a test it setup initial condition for
+            // that test and if you have to set these conditions multiple times
+            // then this abstraction of that piece will be very useful for
+            // keeping test clean and readable.
+            vm.prank(USER);
+            fundMe.fund{value: SEND_VALUE}();
+            _;
+        }
+
+        function testOnlyOwnerCanWithdraw() public funded {
+            // note anything related to vm that comes after vm.expectRevert
+            // will be ignored so this we have written this test correctly then
+            // the test should pass without any issue.
+            vm.prank(USER);
+            vm.expectRevert();
+            fundMe.withdraw();
+        }
+    ```
+
+-   alternative to prank + deal = hoax; first 2 are cheatcode and later is from foundry standard library.
+
+    ```solidity
+                hoax(address(i), SEND_VALUE); // (address, balance)
+    ```
+
+-   Default gas price on Anvil is 0 but we can change it with `vm.txGasPrice(GAS_PRICE)` if you want to test all these things in real world scenario.
+
+    -   [ ] Test set gas price and the test fail
+
+        My current issue is even after setting gas price transaction is not failing even if you don't calculate the difference of balance due to gas consumption. Find out why it is not failing even though it should.
+
+        ```solidity
+            function testWithdrawFromMultipleFunder() public funded {
+                // Arrange
+
+                // here we are using uint160 as that number will be used
+                // to create address from it.
+                // and we can't use uin256 to create address
+                // reason: uin160 has same bytes as address and that why
+                // we need to use uint160 type if you want to cast it to address
+                uint160 numberOfFunder = 10;
+                uint160 startingFunderIndex = 1;
+
+                for (uint160 i = startingFunderIndex; i < numberOfFunder; i++) {
+                    hoax(address(i), SEND_VALUE); // (address, balance)
+                    fundMe.fund{value: SEND_VALUE}();
+                }
+
+                uint256 startingOwnerBalance = fundMe.getOwner().balance;
+                uint256 startingFundMeBalance = address(fundMe).balance;
+
+                // ACT
+                uint256 gasStart = gasleft();
+                console.log("gas left at start: ", gasStart);
+
+                // vm.prank(fundMe.getOwner());
+                // fundMe.withdraw();
+                vm.txGasPrice(GAS_PRICE);
+                // following approach is alternative to above which let's tests
+                // know all the actions between start and stop are taken by
+                // address given in startPrank as an argument.
+                vm.startPrank(fundMe.getOwner());
+                fundMe.withdraw();
+                vm.stopPrank();
+
+                uint256 gasEnd = gasleft();
+                console.log("Gas left at the end: ", gasEnd);
+                // ASSERT
+
+                vm.assertEq(address(fundMe).balance, 0);
+                vm.assertEq(
+                    startingFundMeBalance + startingOwnerBalance,
+                    fundMe.getOwner().balance
+                );
+            }
+        ```
+
+-   Getting snapshot with `forge`, command: `forge snapshot --mt testWithdrawFromMultipleFunder`
+
+    -   This generates `.gas-snapshot` file where it shows how much gas a function consumes.
+
+-   Storage Optimization:
+
+    -   State variables are stored in subsequent spots. Each storage slot is 32 bytes long.
+
+    -   In storage slot of array, only it's length is stored. Acutal elements are stored somewhere else - details about how array is stored are in solidity docs so you can read it.
+
+    -   Mappings storage slot is left empty - read reasoning in solidity docs
+
+    -   Constant variables are stored in contract's bytecode so they don't need storage slot.
+
+    -   Ways to see storage layout in foundry;
+
+        -   `forge inspect FundMe storageLayout`
+
+        -   `cast storage <CONTRACT_ADDRESS> <SLOT_NUMBER>`
+
+-   Structuring `tests` folder:
+
+    -   Integration: functions called with script and testing on different parameters
+
+    -   Mocks: mock contracts will be included in that.
+
+    -   unit: each pieces will code tested separately.
+
+-   You can't do prank on if you're using `vm.startBroadcast`:
+
+    -   ```solidity
+        contract FundFundMe is Script {
+            uint256 SEND_VALUE = 0.1 ether;
+
+            function fundFundMe(address mostRecentlyDeployed) payable public {
+                FundMe(payable(mostRecentlyDeployed)).fund{value: SEND_VALUE}();
+            }
+
+            function run() external {
+                address mostRecentlyDeployed = DevOpsTools.get_most_recent_deployment(
+                    "FundMe",
+                    block.chainid
+                );
+                vm.startBroadcast();
+                fundFundMe(mostRecentlyDeployed);
+                vm.stopBroadcast();
+                console.log("Funded FundMe with %s", SEND_VALUE);
+            }
+        }
+        ```
+
+    -   That's why I have added broadcast in run function as it will work well when doing things on live network but when we access this script in integration test it will complete
+
+    -   With `foundry coverage`, it generates `lcov.info` file which gives many details about coverage but it doesn't generate html project like I was used to but from generated file, we can generated html file to visually see coverage.
+
+        -   command: `forge coverage --report lcov && genhtml lcov.info --branch-coverage --output-dir coverage`
+
+        -   Make sure `lcov` is installed with `sudo apt install lcov`
