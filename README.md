@@ -1,6 +1,6 @@
 # Foundry Fundamentals
 
-This is the third course on cyfrin updraft. These are notes about course itself but one of the motivation for going through this is how Cyfrin has structured their courses which will help me write and plan my tutorial series.
+This is the third course on Cyfrin Updraft. These notes focus on the course itself, but one of my key motivations for going through it is to learn from how Cyfrin has structured their courses. This will help me in writing and planning my own tutorial series.
 
 ## Section 1: Foundry Simple Storage
 
